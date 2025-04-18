@@ -1,10 +1,23 @@
+"""SERVER"""
+
 import socket
 import threading
 import json
 from RSA import generate_keys, encrypt, decrypt, hash_message
 
 class Server:
+    """
+    Сервер, що приймає з'єднання від користувачів та забезпечує 
+    шифровану комунікацію між ними використовуючи RSA шифрування
+    """
+    
     def __init__(self, port: int) -> None:
+        """
+        Ініціалізація сервера
+        
+        Args:
+            port: Порт для прослуховування підключень
+        """
         self.host = '127.0.0.1'
         self.port = port
         self.clients = []
@@ -12,6 +25,10 @@ class Server:
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def start(self):
+        """
+        Запускає сервер, генерує ключі, чекає на підключення користувачів 
+        та обробляє їх підключення
+        """
         self.s.bind((self.host, self.port))
         self.s.listen(100)
 
@@ -33,6 +50,13 @@ class Server:
             threading.Thread(target=self.handle, args=(c,), daemon=True).start()
 
     def broadcast(self, plaintext: str, exclude: socket.socket | None):
+        """
+        Розсилає шифроване повідомлення всім підключеним користувачам
+        
+        Args:
+            plaintext: Текст повідомлення для відправки
+            exclude: Клієнт, якому не треба надсилати повідомлення (зазвичай відправник)
+        """
         for cli in self.clients:
             if cli is exclude:
                 continue
@@ -41,6 +65,13 @@ class Server:
             cli.send(json.dumps({"h": h, "m": cipher}).encode())
 
     def handle(self, client: socket.socket):
+        """
+        Обробляє підключення конкретного користувача в окремому потоці.
+        Приймає, розшифровує та пересилає повідомлення.
+        
+        Args:
+            client: Сокет підключеного клієнта
+        """
         username = self.lookup[client][0]
         try:
             while True:

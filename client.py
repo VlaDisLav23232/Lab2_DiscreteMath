@@ -1,21 +1,36 @@
+"""CLIENT"""
+
 import socket
 import threading
 import json
 
-import sys 
+import sys
 # reader() працює в окремому потоці
 # і вихід з нього не завершує програму
 
 from RSA import generate_keys, encrypt, decrypt, hash_message
 
 class Client:
+    """Клієнт для шифрованого чату з використанням RSA шифрування"""
+
     def __init__(self, server_ip: str, port: int, username: str) -> None:
+        """
+        Ініціалізація клієнта
+        
+        Args:
+            server_ip: IP-адреса сервера
+            port: Порт для підключення
+            username: Ім'я користувача в чаті
+        """
         self.server_ip=server_ip
         self.port = port
         self.username = username
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     def initialize(self):
+        """
+        З'єднання з сервером, обмін ключами та запуск потоків читання і запису
+        """
         self.s.connect((self.server_ip, self.port))
         self.s.send(self.username.encode())
 
@@ -29,6 +44,10 @@ class Client:
         self.writer()
 
     def reader(self):
+        """
+        Функція для отримання та розшифрування повідомлень від сервера.
+        Запускається в окремому потоці.
+        """
         while True:
             raw = self.s.recv(1024)
             # очікування повідомлення
@@ -47,9 +66,12 @@ class Client:
 
     def writer(self):
         """
-        в циклі отримує повідомлення
-        обчислує хеш
-        шифрує повідомлення
+        Функція для шифрування та відправки повідомлень на сервер.
+        Працює в основному потоці.
+        
+        В циклі отримує повідомлення,
+        обчислює хеш,
+        шифрує повідомлення,
         відправляє json
         """
         while True:
