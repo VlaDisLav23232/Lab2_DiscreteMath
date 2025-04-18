@@ -1,2 +1,4 @@
 # Lab2_DiscreteMath
-Hello!
+
+
+![Usage](screenshot.png)
