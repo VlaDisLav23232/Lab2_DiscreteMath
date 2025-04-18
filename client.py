@@ -1,104 +1,67 @@
-"""CLIENT"""
-
 import socket
 import threading
 import json
+
+import sys 
+# reader() працює в окремому потоці
+# і вихід з нього не завершує програму
+
 from RSA import generate_keys, encrypt, decrypt, hash_message
 
 class Client:
-    """A client for a chat-program"""
     def __init__(self, server_ip: str, port: int, username: str) -> None:
-        self.server_ip = server_ip
+        self.server_ip=server_ip
         self.port = port
         self.username = username
-
-    def init_connection(self):
-        """Initialize the connection to the server"""
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect((self.server_ip, self.port))
 
+    def initialize(self):
+        self.s.connect((self.server_ip, self.port))
         self.s.send(self.username.encode())
 
-        # create key pairs
-        print("[client]: Generating RSA keys...")
-        self.e, self.d, self.n = generate_keys()
+        self.public_key, self.private_key = generate_keys()
+        srv_key_raw = self.s.recv(8192).decode()
+        self.server_key = json.loads(srv_key_raw.split(": ", 1)[1])
+        self.s.send(f"KEY: {json.dumps(self.public_key)}".encode())
+        print("[client]: keys exchanged")
 
-        # exchange public keys - sending client's public key to server
-        public_key = {'e': self.e, 'n': self.n}
-        print("[client]: Sending my public key to server...")
-        self.s.send(json.dumps(public_key).encode())
+        threading.Thread(target=self.reader, daemon=True).start()
+        self.writer()
 
-        # receive server's public key
-        print("[client]: Receiving server's public key...")
-        server_public_key_data = self.s.recv(1024).decode()
-        server_public_key = json.loads(server_public_key_data)
-        self.server_e = server_public_key['e']
-        self.server_n = server_public_key['n']
-
-        print("[client]: RSA key exchange completed")
-
-        message_handler = threading.Thread(target=self.read_handler,args=())
-        message_handler.start()
-        input_handler = threading.Thread(target=self.write_handler,args=())
-        input_handler.start()
-
-    def read_handler(self):
-        """Handle incoming messages from the server"""
+    def reader(self):
         while True:
+            raw = self.s.recv(1024)
+            # очікування повідомлення
+            if not raw:
+                print("[client]: server closed connection")
+                sys.exit(0)
             try:
-                data = self.s.recv(4096).decode()
-                if not data:
-                    break
-
-                message_data = json.loads(data)
-                received_hash = message_data['hash']
-                encrypted_message = message_data['message']
-
-                # Convert string representation of list back to actual list of integers
-                encrypted_message = [int(x) for x in encrypted_message]
-
-                # decrypt message with the private key
-                decrypted_message = decrypt(encrypted_message, self.d, self.n)
-
-                # verify message integrity
-                calculated_hash = hash_message(decrypted_message)
-                if calculated_hash != received_hash:
-                    print("[client]: Message integrity check\
- failed! Message may have been tampered with.")
+                obj = json.loads(raw.decode())
+                text = decrypt(obj["m"], self.private_key)
+                if hash_message(text) != obj["h"]:
+                    print("[Warning]: message integrity check failed.")
                     continue
-
-                print(f"\n{decrypted_message}")
+                print(text)
             except Exception as e:
-                print(f"[client]: Error receiving message: {e}")
-                break
+                print(f"[client]: error: {e}")
 
-    def write_handler(self):
-        """Handle sending messages to the server"""
+    def writer(self):
+        """
+        в циклі отримує повідомлення
+        обчислує хеш
+        шифрує повідомлення
+        відправляє json
+        """
         while True:
-            message = input()
-            if not message:
-                continue
-
             try:
-                # calculate message hash for integrity check
-                message_hash = hash_message(message)
-
-                # encrypt message with the server's public key
-                encrypted_message = encrypt(message, self.server_e, self.server_n)
-
-                # Convert list of integers to strings for JSON serialization
-                encrypted_message_str = [str(x) for x in encrypted_message]
-
-                # send message as (hash, encrypted_message)
-                message_data = {
-                    'hash': message_hash,
-                    'message': encrypted_message_str
-                }
-                self.s.send(json.dumps(message_data).encode())
-            except Exception as e:
-                print(f"[client]: Error sending message: {e}")
+                msg = input()
+                h = hash_message(msg)
+                cipher = encrypt(msg, self.server_key).decode()
+                self.s.send(json.dumps({"h": h, "m": cipher}).encode())
+            except (EOFError, KeyboardInterrupt):
+                # обробляє Ctrl C
+                self.s.close()
                 break
 
 if __name__ == "__main__":
-    cl = Client("127.0.0.1", 9001, "b_g")
-    cl.init_connection()
+    Client("127.0.0.1", 9001, input("Ваш нік: ").strip()).initialize()
