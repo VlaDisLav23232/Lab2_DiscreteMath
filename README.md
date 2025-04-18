@@ -65,6 +65,7 @@
 python3 server.py
 # у новому терміналі:
 python3 client.py
+```
 
 
 ![Usage](screenshot.png)
